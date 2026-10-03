@@ -1,8 +1,8 @@
 # Aidline Contracts
 
-Soroban smart contracts for **Aidline**, a transparent funding platform for disaster relief and climate action on Stellar.
+Soroban smart contracts for **Aidline**, where diaspora communities fund disaster relief and climate work back home, with proof it landed.
 
-When a flood hits or a reforestation project needs funding, donors usually have no idea where their money ends up. Aidline fixes that by holding donations in an on chain escrow and releasing them to the people doing the work one milestone at a time, only after an independent verifier confirms each milestone was delivered. If a campaign stalls, donors get their unreleased money back.
+When a flood hits home or a reforestation project needs funding, people abroad are often the first to give, and they usually have no idea where their money ends up. Aidline fixes that by holding donations in an on chain escrow and releasing them to the people doing the work one milestone at a time, only after an independent verifier confirms each milestone was delivered. If a campaign stalls, donors get their unreleased money back.
 
 This repo is one of three:
 
