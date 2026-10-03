@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aidline-org/aidline-frontend/main/public/brand/aidline-wordmark.png" alt="Aidline" width="420">
+</p>
+
 # Aidline Contracts
 
 Soroban smart contracts for **Aidline**, where diaspora communities fund disaster relief and climate work back home, with proof it landed.
