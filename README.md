@@ -84,7 +84,14 @@ stellar keys generate alice --network testnet --fund
 ./scripts/deploy-testnet.sh alice
 ```
 
-The script prints the contract id and writes it to `.env.testnet`, which the backend and frontend read.
+The script prints the contract id and writes the ids to `.env.testnet`. Copy them into the backend and frontend `.env` files.
+
+### Current testnet deployment
+
+| | |
+| --- | --- |
+| Contract | [`CBV6XOB66LTO4QCIXYNEVAY5ZGIWAWIDFCCFCW33NJ5A23R7YAFWKLX4`](https://stellar.expert/explorer/testnet/contract/CBV6XOB66LTO4QCIXYNEVAY5ZGIWAWIDFCCFCW33NJ5A23R7YAFWKLX4) |
+| Token | Native XLM (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`) |
 
 ## Project layout
 
