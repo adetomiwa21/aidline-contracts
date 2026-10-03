@@ -1,0 +1,6 @@
+target/
+.soroban/
+.stellar/
+*.env
+.DS_Store
+test_snapshots/
