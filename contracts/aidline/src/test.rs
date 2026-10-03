@@ -1,0 +1,296 @@
+#![cfg(test)]
+
+use soroban_sdk::{
+    Address, Env, String,
+    testutils::{Address as _, Ledger},
+    token::{StellarAssetClient, TokenClient},
+    vec,
+};
+
+use crate::{Aidline, AidlineClient, CampaignKind, CampaignStatus, Error};
+
+const DAY: u64 = 86_400;
+
+struct Setup<'a> {
+    env: Env,
+    client: AidlineClient<'a>,
+    token: TokenClient<'a>,
+    admin: Address,
+    verifier: Address,
+    creator: Address,
+    beneficiary: Address,
+}
+
+impl<'a> Setup<'a> {
+    fn new() -> Self {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+
+        let admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(admin.clone());
+        let token = TokenClient::new(&env, &sac.address());
+
+        let contract_id = env.register(Aidline, (admin.clone(), sac.address()));
+        let client = AidlineClient::new(&env, &contract_id);
+
+        let verifier = Address::generate(&env);
+        client.add_verifier(&verifier);
+
+        Setup {
+            creator: Address::generate(&env),
+            beneficiary: Address::generate(&env),
+            env,
+            client,
+            token,
+            admin,
+            verifier,
+        }
+    }
+
+    fn donor(&self, balance: i128) -> Address {
+        let donor = Address::generate(&self.env);
+        StellarAssetClient::new(&self.env, &self.token.address).mint(&donor, &balance);
+        donor
+    }
+
+    /// Campaign with three milestones of 300, 300 and 400 (goal 1000).
+    fn campaign(&self) -> u64 {
+        self.client.create_campaign(
+            &self.creator,
+            &self.beneficiary,
+            &self.verifier,
+            &CampaignKind::Emergency,
+            &String::from_str(&self.env, "ipfs://flood-relief"),
+            &(self.env.ledger().timestamp() + 30 * DAY),
+            &vec![&self.env, 300, 300, 400],
+        )
+    }
+
+    fn proof(&self) -> String {
+        String::from_str(&self.env, "ipfs://proof")
+    }
+
+    fn pass_deadline(&self) {
+        let now = self.env.ledger().timestamp();
+        self.env.ledger().set_timestamp(now + 31 * DAY);
+    }
+}
+
+#[test]
+fn creates_campaign_with_goal_from_milestones() {
+    let s = Setup::new();
+    let id = s.campaign();
+
+    let c = s.client.get_campaign(&id);
+    assert_eq!(id, 0);
+    assert_eq!(c.goal, 1000);
+    assert_eq!(c.status, CampaignStatus::Active);
+    assert_eq!(c.kind, CampaignKind::Emergency);
+    assert_eq!(s.client.campaign_count(), 1);
+}
+
+#[test]
+fn rejects_unknown_verifier() {
+    let s = Setup::new();
+    let stranger = Address::generate(&s.env);
+    let res = s.client.try_create_campaign(
+        &s.creator,
+        &s.beneficiary,
+        &stranger,
+        &CampaignKind::Climate,
+        &String::from_str(&s.env, "ipfs://trees"),
+        &(s.env.ledger().timestamp() + DAY),
+        &vec![&s.env, 100],
+    );
+    assert_eq!(res, Err(Ok(Error::NotVerifier)));
+}
+
+#[test]
+fn rejects_bad_milestones_and_deadline() {
+    let s = Setup::new();
+    let uri = String::from_str(&s.env, "ipfs://x");
+    let future = s.env.ledger().timestamp() + DAY;
+
+    let empty = s.client.try_create_campaign(
+        &s.creator,
+        &s.beneficiary,
+        &s.verifier,
+        &CampaignKind::Climate,
+        &uri,
+        &future,
+        &vec![&s.env],
+    );
+    assert_eq!(empty, Err(Ok(Error::InvalidMilestones)));
+
+    let negative = s.client.try_create_campaign(
+        &s.creator,
+        &s.beneficiary,
+        &s.verifier,
+        &CampaignKind::Climate,
+        &uri,
+        &future,
+        &vec![&s.env, 100, -5],
+    );
+    assert_eq!(negative, Err(Ok(Error::InvalidMilestones)));
+
+    let past = s.client.try_create_campaign(
+        &s.creator,
+        &s.beneficiary,
+        &s.verifier,
+        &CampaignKind::Climate,
+        &uri,
+        &s.env.ledger().timestamp(),
+        &vec![&s.env, 100],
+    );
+    assert_eq!(past, Err(Ok(Error::DeadlineInPast)));
+}
+
+#[test]
+fn donations_are_held_in_escrow() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let donor = s.donor(500);
+
+    s.client.donate(&donor, &id, &200);
+    s.client.donate(&donor, &id, &100);
+
+    assert_eq!(s.token.balance(&donor), 200);
+    assert_eq!(s.token.balance(&s.client.address), 300);
+    assert_eq!(s.client.contribution_of(&id, &donor), 300);
+    assert_eq!(s.client.get_campaign(&id).raised, 300);
+}
+
+#[test]
+fn donation_cannot_exceed_goal() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let donor = s.donor(2000);
+
+    assert_eq!(
+        s.client.try_donate(&donor, &id, &1001),
+        Err(Ok(Error::GoalExceeded))
+    );
+    assert_eq!(
+        s.client.try_donate(&donor, &id, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
+fn milestones_release_in_order_and_complete() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let donor = s.donor(1000);
+    s.client.donate(&donor, &id, &1000);
+
+    assert_eq!(s.client.approve_milestone(&id, &s.proof()), 300);
+    assert_eq!(s.token.balance(&s.beneficiary), 300);
+    assert_eq!(s.client.approve_milestone(&id, &s.proof()), 300);
+    assert_eq!(s.client.approve_milestone(&id, &s.proof()), 400);
+
+    let c = s.client.get_campaign(&id);
+    assert_eq!(s.token.balance(&s.beneficiary), 1000);
+    assert_eq!(c.released, 1000);
+    assert_eq!(c.status, CampaignStatus::Completed);
+    assert_eq!(
+        s.client.try_approve_milestone(&id, &s.proof()),
+        Err(Ok(Error::CampaignNotActive))
+    );
+}
+
+#[test]
+fn milestone_needs_enough_funds() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let donor = s.donor(1000);
+    s.client.donate(&donor, &id, &299);
+
+    assert_eq!(
+        s.client.try_approve_milestone(&id, &s.proof()),
+        Err(Ok(Error::MilestoneNotFunded))
+    );
+}
+
+#[test]
+fn removed_verifier_cannot_approve() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let donor = s.donor(1000);
+    s.client.donate(&donor, &id, &1000);
+    s.client.remove_verifier(&s.verifier);
+
+    assert_eq!(
+        s.client.try_approve_milestone(&id, &s.proof()),
+        Err(Ok(Error::NotVerifier))
+    );
+}
+
+#[test]
+fn cancelled_campaign_refunds_unreleased_pro_rata() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let alice = s.donor(1000);
+    let bob = s.donor(1000);
+    s.client.donate(&alice, &id, &600);
+    s.client.donate(&bob, &id, &400);
+    s.client.approve_milestone(&id, &s.proof()); // 300 released, 700 left
+
+    s.client.cancel_campaign(&s.creator, &id);
+
+    assert_eq!(s.client.refund(&alice, &id), 420);
+    assert_eq!(s.client.refund(&bob, &id), 280);
+    assert_eq!(s.token.balance(&s.client.address), 0);
+    assert_eq!(
+        s.client.try_refund(&alice, &id),
+        Err(Ok(Error::NothingToRefund))
+    );
+}
+
+#[test]
+fn expired_campaign_allows_refund_and_blocks_activity() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let donor = s.donor(1000);
+    s.client.donate(&donor, &id, &500);
+
+    assert_eq!(
+        s.client.try_refund(&donor, &id),
+        Err(Ok(Error::RefundNotAvailable))
+    );
+
+    s.pass_deadline();
+    assert_eq!(
+        s.client.try_donate(&donor, &id, &10),
+        Err(Ok(Error::CampaignExpired))
+    );
+    assert_eq!(
+        s.client.try_approve_milestone(&id, &s.proof()),
+        Err(Ok(Error::CampaignExpired))
+    );
+    assert_eq!(s.client.refund(&donor, &id), 500);
+    assert_eq!(s.token.balance(&donor), 1000);
+}
+
+#[test]
+fn only_creator_or_admin_can_cancel() {
+    let s = Setup::new();
+    let id = s.campaign();
+    let stranger = Address::generate(&s.env);
+
+    assert_eq!(
+        s.client.try_cancel_campaign(&stranger, &id),
+        Err(Ok(Error::Unauthorized))
+    );
+    s.client.cancel_campaign(&s.admin, &id);
+    assert_eq!(s.client.get_campaign(&id).status, CampaignStatus::Cancelled);
+}
+
+#[test]
+fn missing_campaign_errors() {
+    let s = Setup::new();
+    assert_eq!(
+        s.client.try_get_campaign(&42),
+        Err(Ok(Error::CampaignNotFound))
+    );
+}
