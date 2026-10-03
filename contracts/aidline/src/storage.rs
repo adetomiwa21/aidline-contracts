@@ -1,0 +1,105 @@
+use soroban_sdk::{Address, Env};
+
+use crate::errors::Error;
+use crate::types::{Campaign, DataKey};
+
+const DAY_IN_LEDGERS: u32 = 17_280;
+const INSTANCE_BUMP: u32 = 30 * DAY_IN_LEDGERS;
+const INSTANCE_THRESHOLD: u32 = INSTANCE_BUMP - DAY_IN_LEDGERS;
+const PERSISTENT_BUMP: u32 = 120 * DAY_IN_LEDGERS;
+const PERSISTENT_THRESHOLD: u32 = PERSISTENT_BUMP - 7 * DAY_IN_LEDGERS;
+
+pub fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_THRESHOLD, INSTANCE_BUMP);
+}
+
+fn bump(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, PERSISTENT_THRESHOLD, PERSISTENT_BUMP);
+}
+
+pub fn admin(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::Admin).unwrap()
+}
+
+pub fn set_admin(env: &Env, admin: &Address) {
+    env.storage().instance().set(&DataKey::Admin, admin);
+}
+
+pub fn token(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::Token).unwrap()
+}
+
+pub fn set_token(env: &Env, token: &Address) {
+    env.storage().instance().set(&DataKey::Token, token);
+}
+
+/// Returns the next campaign id and advances the counter.
+pub fn next_campaign_id(env: &Env) -> u64 {
+    let id: u64 = env
+        .storage()
+        .instance()
+        .get(&DataKey::CampaignCount)
+        .unwrap_or(0);
+    env.storage()
+        .instance()
+        .set(&DataKey::CampaignCount, &(id + 1));
+    id
+}
+
+pub fn campaign_count(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&DataKey::CampaignCount)
+        .unwrap_or(0)
+}
+
+pub fn is_verifier(env: &Env, who: &Address) -> bool {
+    let key = DataKey::Verifier(who.clone());
+    env.storage().persistent().get(&key).unwrap_or(false)
+}
+
+pub fn set_verifier(env: &Env, who: &Address, active: bool) {
+    let key = DataKey::Verifier(who.clone());
+    if active {
+        env.storage().persistent().set(&key, &true);
+        bump(env, &key);
+    } else {
+        env.storage().persistent().remove(&key);
+    }
+}
+
+pub fn campaign(env: &Env, id: u64) -> Result<Campaign, Error> {
+    let key = DataKey::Campaign(id);
+    let campaign = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .ok_or(Error::CampaignNotFound)?;
+    bump(env, &key);
+    Ok(campaign)
+}
+
+pub fn save_campaign(env: &Env, campaign: &Campaign) {
+    let key = DataKey::Campaign(campaign.id);
+    env.storage().persistent().set(&key, campaign);
+    bump(env, &key);
+}
+
+pub fn contribution(env: &Env, id: u64, donor: &Address) -> i128 {
+    let key = DataKey::Contribution(id, donor.clone());
+    env.storage().persistent().get(&key).unwrap_or(0)
+}
+
+pub fn set_contribution(env: &Env, id: u64, donor: &Address, amount: i128) {
+    let key = DataKey::Contribution(id, donor.clone());
+    if amount == 0 {
+        env.storage().persistent().remove(&key);
+    } else {
+        env.storage().persistent().set(&key, &amount);
+        bump(env, &key);
+    }
+}
