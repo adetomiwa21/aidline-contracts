@@ -4,6 +4,8 @@
 
 # Aidline Contracts
 
+**Live demo:** [aidline-frontend.vercel.app](https://aidline-frontend.vercel.app) · **API:** [aidline-api.onrender.com](https://aidline-api.onrender.com/stats) · Stellar testnet
+
 Soroban smart contracts for **Aidline**, where diaspora communities fund disaster relief and climate work back home, with proof it landed.
 
 When a flood hits home or a reforestation project needs funding, people abroad are often the first to give, and they usually have no idea where their money ends up. Aidline fixes that by holding donations in an on chain escrow and releasing them to the people doing the work one milestone at a time, only after an independent verifier confirms each milestone was delivered. If a campaign stalls, donors get their unreleased money back.
@@ -94,7 +96,7 @@ The script prints the contract id and writes the ids to `.env.testnet`. Copy the
 
 | | |
 | --- | --- |
-| Contract | [`CCONZEJF7ZQPC2HPM36WJYCDJAWEZ4EHESV3AEWSQMVX7LWVHYXKTMBW`](https://stellar.expert/explorer/testnet/contract/CCONZEJF7ZQPC2HPM36WJYCDJAWEZ4EHESV3AEWSQMVX7LWVHYXKTMBW) |
+| Contract | [`CALNXTTPKPTCCWSTN3NHQNZHPXM2IXQZQMFBCCK7LI3N5FRB6DB5NLHK`](https://stellar.expert/explorer/testnet/contract/CALNXTTPKPTCCWSTN3NHQNZHPXM2IXQZQMFBCCK7LI3N5FRB6DB5NLHK) |
 | Token | Native XLM (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`) |
 
 ## Project layout
