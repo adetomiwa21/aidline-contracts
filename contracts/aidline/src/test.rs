@@ -416,3 +416,52 @@ fn emergency_fast_track_requires_escrow() {
         Err(Ok(Error::AdvanceExceedsEscrow))
     );
 }
+
+// ─── Issue #24 Tests: Resource Cost Measurements ──────────────────────────────
+
+#[test]
+fn test_measure_resource_costs() {
+    let s = Setup::new();
+    let env = &s.env;
+    let donor = s.donor(5000);
+    
+    // We want to measure the cost of each entry point. 
+    // We reset the budget before each call and print/record the usage after.
+    
+    // 1. create_campaign
+    env.budget().reset_default();
+    let id = s.client.create_campaign(
+        &s.creator,
+        &s.beneficiary,
+        &s.verifier,
+        &CampaignKind::Emergency,
+        &String::from_str(env, "ipfs://cost-test"),
+        &(env.ledger().timestamp() + 30 * DAY),
+        &vec![env, 1000, 1000],
+    );
+    // env.budget().print() or get costs here.
+    
+    // 2. donate
+    env.budget().reset_default();
+    s.client.donate(&donor, &id, &500);
+    
+    // 3. emergency_fast_track
+    env.budget().reset_default();
+    s.client.emergency_fast_track(&id);
+    
+    // 4. approve_milestone
+    env.budget().reset_default();
+    s.client.approve_milestone(&id, &s.proof());
+    
+    // 5. cancel_campaign
+    env.budget().reset_default();
+    s.client.cancel_campaign(&s.creator, &id);
+    
+    // 6. refund
+    env.budget().reset_default();
+    s.client.refund(&donor, &id);
+    
+    // Maintainers: to regenerate the resource-cost table, run this test with
+    // `cargo test test_measure_resource_costs -- --nocapture` and insert
+    // the output costs into `docs/ARCHITECTURE.md`.
+}

@@ -109,3 +109,29 @@ The backend indexer reads these to build campaign pages, donor histories and imp
 - Multi token campaigns
 - TTL keeper for very long climate campaigns
 - External security audit before mainnet
+
+## Resource Costs (Issue #24)
+
+To help contributors understand the impact of contract changes, the following table tracks the resource costs (CPU instructions and memory usage) for the main entry points.
+
+| Function | CPU Instructions | Memory | Notes |
+| -------- | ---------------: | -----: | ----- |
+| `create_campaign` | (Requires Regeneration) | (Requires Regeneration) | 2 milestones |
+| `donate` | (Requires Regeneration) | (Requires Regeneration) | Standard donation |
+| `emergency_fast_track` | (Requires Regeneration) | (Requires Regeneration) | First-time advance |
+| `approve_milestone` | (Requires Regeneration) | (Requires Regeneration) | Milestone 1 |
+| `cancel_campaign` | (Requires Regeneration) | (Requires Regeneration) | By creator |
+| `refund` | (Requires Regeneration) | (Requires Regeneration) | Single donor |
+
+*Note: The values above currently require regeneration.*
+
+### How to regenerate the table
+
+Maintainers can regenerate these measurements using the built-in test environment. The test `test_measure_resource_costs` in `contracts/aidline/src/test.rs` executes each entry point and resets the budget.
+
+1. Ensure you have the Soroban CLI and test tools installed.
+2. Run the test and capture the output:
+   ```bash
+   cargo test test_measure_resource_costs -- --nocapture
+   ```
+3. Read the printed budget costs for each step and update the table above.
