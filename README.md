@@ -117,6 +117,8 @@ scripts/       deployment helpers
 
 We welcome contributions of every size, from typo fixes to new contract features. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and look for issues labelled `good first issue`.
 
+Browse open work by complexity in [ISSUES.md](ISSUES.md): 30 scoped issues, including good first issues for newcomers.
+
 ## Security
 
 This code has not been audited yet. Please do not use it with real funds on mainnet. If you find a vulnerability, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
