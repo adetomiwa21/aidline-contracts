@@ -465,3 +465,152 @@ fn test_measure_resource_costs() {
     // `cargo test test_measure_resource_costs -- --nocapture` and insert
     // the output costs into `docs/ARCHITECTURE.md`.
 }
+
+// ─── Issue #25 Tests: Assert Exact Events ─────────────────────────────────────
+
+#[test]
+fn test_exact_events_emitted() {
+    let s = Setup::new();
+    let env = &s.env;
+    let donor = s.donor(1000);
+    
+    let deadline = env.ledger().timestamp() + 30 * DAY;
+    let uri = String::from_str(env, "ipfs://events-test");
+    let milestones = vec![env, 300, 700];
+
+    // 1. VerifierUpdated
+    // Emitted during Setup::new() when `client.add_verifier` was called.
+    // However, let's trigger it directly.
+    s.client.add_verifier(&donor);
+    let events = env.events().all();
+    // Assuming it's the last event
+    let verifier_updated_event = events.last().unwrap();
+    assert_eq!(
+        verifier_updated_event,
+        (
+            s.client.address.clone(),
+            soroban_sdk::vec![
+                env,
+                soroban_sdk::Symbol::new(env, "VerifierUpdated").into_val(env),
+                donor.into_val(env)
+            ],
+            true.into_val(env) // active: bool
+        )
+    );
+
+    // Clear events
+    env.events().all().clear();
+
+    // 2. CampaignCreated
+    let id = s.client.create_campaign(
+        &s.creator,
+        &s.beneficiary,
+        &s.verifier,
+        &CampaignKind::Emergency,
+        &uri,
+        &deadline,
+        &milestones,
+    );
+    let events = env.events().all();
+    let campaign_created_event = events.last().unwrap();
+    assert_eq!(
+        campaign_created_event,
+        (
+            s.client.address.clone(),
+            soroban_sdk::vec![
+                env,
+                soroban_sdk::Symbol::new(env, "CampaignCreated").into_val(env),
+                id.into_val(env)
+            ],
+            (s.creator.clone(), CampaignKind::Emergency, 1000_i128, deadline).into_val(env)
+        )
+    );
+
+    // 3. Donated
+    s.client.donate(&donor, &id, &500);
+    let events = env.events().all();
+    let donated_event = events.last().unwrap();
+    assert_eq!(
+        donated_event,
+        (
+            s.client.address.clone(),
+            soroban_sdk::vec![
+                env,
+                soroban_sdk::Symbol::new(env, "Donated").into_val(env),
+                id.into_val(env),
+                donor.into_val(env)
+            ],
+            500_i128.into_val(env)
+        )
+    );
+
+    // 4. EmergencyAdvanceReleased
+    s.client.emergency_fast_track(&id);
+    let events = env.events().all();
+    let emergency_event = events.last().unwrap();
+    assert_eq!(
+        emergency_event,
+        (
+            s.client.address.clone(),
+            soroban_sdk::vec![
+                env,
+                soroban_sdk::Symbol::new(env, "EmergencyAdvanceReleased").into_val(env),
+                id.into_val(env),
+                s.verifier.into_val(env)
+            ],
+            (0_u32, 200_i128).into_val(env) // milestone_index, amount
+        )
+    );
+
+    // 5. MilestoneReleased
+    s.client.approve_milestone(&id, &s.proof());
+    let events = env.events().all();
+    let milestone_event = events.last().unwrap();
+    assert_eq!(
+        milestone_event,
+        (
+            s.client.address.clone(),
+            soroban_sdk::vec![
+                env,
+                soroban_sdk::Symbol::new(env, "MilestoneReleased").into_val(env),
+                id.into_val(env)
+            ],
+            (0_u32, 300_i128, s.proof()).into_val(env) // index, amount, proof_uri
+        )
+    );
+
+    // 6. CampaignCancelled
+    s.client.cancel_campaign(&s.creator, &id);
+    let events = env.events().all();
+    let cancelled_event = events.last().unwrap();
+    assert_eq!(
+        cancelled_event,
+        (
+            s.client.address.clone(),
+            soroban_sdk::vec![
+                env,
+                soroban_sdk::Symbol::new(env, "CampaignCancelled").into_val(env),
+                id.into_val(env)
+            ],
+            ().into_val(env) // no data fields
+        )
+    );
+
+    // 7. Refunded
+    s.client.refund(&donor, &id);
+    let events = env.events().all();
+    let refunded_event = events.last().unwrap();
+    assert_eq!(
+        refunded_event,
+        (
+            s.client.address.clone(),
+            soroban_sdk::vec![
+                env,
+                soroban_sdk::Symbol::new(env, "Refunded").into_val(env),
+                id.into_val(env),
+                donor.into_val(env)
+            ],
+            350_i128.into_val(env) // amount refunded
+        )
+    );
+}
