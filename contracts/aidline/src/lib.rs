@@ -137,6 +137,35 @@ impl Aidline {
         Ok(id)
     }
 
+    /// Creates a campaign with per-milestone due dates.
+    pub fn create_campaign_with_due_dates(
+        env: Env,
+        creator: Address,
+        beneficiary: Address,
+        verifier: Address,
+        kind: CampaignKind,
+        metadata_uri: String,
+        deadline: u64,
+        milestones: Vec<i128>,
+        milestone_due_dates: Vec<u64>,
+    ) -> Result<u64, Error> {
+        let id = Self::create_campaign(
+            env.clone(),
+            creator,
+            beneficiary,
+            verifier,
+            kind,
+            metadata_uri,
+            deadline,
+            milestones.clone(),
+        )?;
+        if milestone_due_dates.len() != milestones.len() {
+            return Err(Error::InvalidMilestones);
+        }
+        storage::set_milestone_due_dates(&env, id, &milestone_due_dates);
+        Ok(id)
+    }
+
     pub fn donate(env: Env, donor: Address, campaign_id: u64, amount: i128) -> Result<(), Error> {
         donor.require_auth();
         if amount <= 0 {
@@ -319,11 +348,15 @@ impl Aidline {
     /// without completing.
     pub fn refund(env: Env, donor: Address, campaign_id: u64) -> Result<i128, Error> {
         donor.require_auth();
-        let campaign = storage::campaign(&env, campaign_id)?;
+        let mut campaign = storage::campaign(&env, campaign_id)?;
 
         let expired = campaign.status == CampaignStatus::Active
             && env.ledger().timestamp() > campaign.deadline;
-        if campaign.status != CampaignStatus::Cancelled && !expired {
+            
+        let is_overdue = Self::is_overdue(&env, &campaign);
+        let ended = campaign.status == CampaignStatus::Cancelled || expired;
+
+        if !ended && !is_overdue {
             return Err(Error::RefundNotAvailable);
         }
 
@@ -331,8 +364,7 @@ impl Aidline {
         if contributed == 0 {
             return Err(Error::NothingToRefund);
         }
-        // `raised` and `released` are frozen once refunds open, so every donor
-        // is measured against the same pool.
+        
         let unreleased = campaign.raised - campaign.released;
         let amount = contributed * unreleased / campaign.raised;
 
@@ -343,6 +375,13 @@ impl Aidline {
                 &donor,
                 &amount,
             );
+        }
+
+        if !ended {
+            let released_portion = contributed - amount;
+            campaign.raised -= contributed;
+            campaign.released -= released_portion;
+            storage::save_campaign(&env, &campaign);
         }
 
         Refunded {
@@ -390,5 +429,19 @@ impl Aidline {
             return Err(Error::CampaignExpired);
         }
         Ok(())
+    }
+
+    fn is_overdue(env: &Env, campaign: &Campaign) -> bool {
+        if campaign.status != CampaignStatus::Active {
+            return false;
+        }
+        if let Some(due_dates) = storage::milestone_due_dates(env, campaign.id) {
+            if let Some(due_date) = due_dates.get(campaign.milestones_released) {
+                if env.ledger().timestamp() > due_date {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }

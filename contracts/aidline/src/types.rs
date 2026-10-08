@@ -58,4 +58,6 @@ pub enum DataKey {
     Verifier(Address),
     Campaign(u64),
     Contribution(u64, Address),
+    // Issue #26 — per-milestone due dates
+    MilestoneDueDates(u64),
 }
